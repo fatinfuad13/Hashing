@@ -91,6 +91,14 @@ int secondHash(const string& s, int tableSize)
     return (hashVal == 0 ? 1 : hashVal);
 }
 
+/*int getChainLength(int index) const
+{
+    if (strategy != SEPARATE_CHAINING_RBT) return 0;
+    return chainTable[index]->size();
+}*/
+
+
+
 // --- General HashTable Modes ---
 enum CollisionStrategy
 {
@@ -134,6 +142,13 @@ public:
             openTable.resize(capacity);
         }
     }
+
+    int getChainLength(int index) const /// only applies for chaining method of collision resolution
+{
+    if (strategy != SEPARATE_CHAINING_RBT) return 0;
+    return chainTable[index]->getNodeCount();  // You must implement size() in RedBlackTree
+}
+
 
     /*int insert(const string& key)
     {
@@ -358,6 +373,12 @@ void remove(const string& key)
     }
 }
 
+bool isBucketEmpty(int index) const {
+    if (strategy == SEPARATE_CHAINING_RBT && index >= 0 && index < capacity)
+        return chainTable[index]->isEmpty();
+    return true; // for other strategies, treat as empty
+}
+
 
 
 };
@@ -494,7 +515,7 @@ void remove(const string& key)
 }*/
 
 
-void benchmark(int tableSize, double loadFactor, CollisionStrategy mode,const vector<string>& generatedWords,
+/*void benchmark(int tableSize, double loadFactor, CollisionStrategy mode,const vector<string>& generatedWords,
                function<int(const string&)> h1,
                function<int(const string&)> h2 = nullptr)
 {
@@ -545,10 +566,14 @@ void benchmark(int tableSize, double loadFactor, CollisionStrategy mode,const ve
 
     int totalSearchProbes = 0;
     auto t1 = high_resolution_clock::now(); /// clock starts
-    for (const string& word : searchSet)
-        totalSearchProbes += table.search(word);
+
+        for (const string& word : searchSet)
+             totalSearchProbes += table.search(word);
+
+
+
     auto t2 = high_resolution_clock::now(); /// clock ends
-    double avgSearchTime = duration<double, micro>(t2 - t1).count() /(double) searchSet.size();
+    double avgSearchTime = duration<double, milli>(t2 - t1).count() /(double) searchSet.size();
 
     // Deletion
     for (int i = 0; i < searchSet.size() / 2; ++i)
@@ -562,17 +587,125 @@ void benchmark(int tableSize, double loadFactor, CollisionStrategy mode,const ve
 
     int totalMixedProbes = 0;
     auto t3 = high_resolution_clock::now(); /// clock starts
-    for (const string& word : mixedSearchSet)
-        totalMixedProbes += table.search(word);
+
+           for (const string& word : mixedSearchSet)
+                totalMixedProbes += table.search(word);
+
+
     auto t4 = high_resolution_clock::now(); /// clock ends
-    double avgMixedTime = duration<double, micro>(t4 - t3).count() / (double)mixedSearchSet.size();
+    double avgMixedTime = duration<double, milli>(t4 - t3).count() / (double)mixedSearchSet.size();
 
     cout << "Search Before Deletion: Avg Time (us): " << avgSearchTime
          << ", Avg Probes: " << totalSearchProbes / (double)searchSet.size() << endl;
 
     cout << "Search After Deletion: Avg Time (us): " << avgMixedTime
          << ", Avg Probes: " << totalMixedProbes / (double)mixedSearchSet.size() << endl;
+}*/
+
+
+void benchmark(int tableSize, double loadFactor, CollisionStrategy mode, const vector<string>& generatedWords,
+               function<int(const string&)> h1,
+               function<int(const string&)> h2 = nullptr)
+{
+    int numInsertions = floor(loadFactor * tableSize);
+    vector<string> words(generatedWords.begin(), generatedWords.begin() + numInsertions);
+
+    HashTable table(tableSize, mode, h1, h2);
+
+    vector<string> inserted;
+    int totalInsertProbes = 0;
+    int totalInsertCollisions = 0;
+
+    for (const string& word : words)
+    {
+        if (mode == SEPARATE_CHAINING_RBT)
+        {
+            int idx = h1(word);
+           if (!table.isBucketEmpty(idx))
+                                      // collision if bucket not empty
+                totalInsertCollisions++;
+
+            int probes = table.insert(word);
+            if (probes >= 0)
+            {
+                inserted.push_back(word);
+            }
+        }
+        else
+        {
+            int probes = table.insert(word);
+            if (probes >= 0)
+            {
+                totalInsertProbes += probes;
+                if (probes > 0)
+                    ++totalInsertCollisions;
+                inserted.push_back(word);
+            }
+        }
+    }
+
+    cout << "\n[Mode=" << (mode == LINEAR_PROBING ? "Linear" : mode == DOUBLE_HASHING ? "Double" : "Chaining")
+         << "] Table Size: " << tableSize << ", Total Unique Inserts: " << inserted.size() << endl;
+
+    if (mode != SEPARATE_CHAINING_RBT)
+    {
+        cout << "Insert Total Collisions: " << totalInsertProbes << endl;
+    }
+    cout << "Insert Total Collisions: " << totalInsertCollisions << endl;
+
+    int n = inserted.size();
+    vector<int> indices(n);
+    iota(indices.begin(), indices.end(), 0);
+    shuffle(indices.begin(), indices.end(), default_random_engine(time(0)));
+
+    vector<string> searchSet;
+    for (int i = 0; i < n / 10; ++i)
+        searchSet.push_back(inserted[indices[i]]);
+
+    int totalSearchProbes = 0;
+    auto t1 = high_resolution_clock::now();
+
+    for(int i=0;i<1000;i++)
+    {
+         for (const string& word : searchSet)
+               totalSearchProbes += table.search(word);
+    }
+
+
+    auto t2 = high_resolution_clock::now();
+    double avgSearchTime = duration_cast<duration<double, micro>>(t2 - t1).count() / searchSet.size();
+
+    for (int i = 0; i < searchSet.size() / 2; ++i)
+        table.remove(searchSet[i]);
+
+    vector<string> mixedSearchSet;
+    for (int i = 0; i < searchSet.size() / 2; ++i)
+        mixedSearchSet.push_back(searchSet[i]);
+    for (int i = 0; i < searchSet.size() / 2; ++i)
+        mixedSearchSet.push_back(inserted[indices[n / 10 + i]]);
+
+    int totalMixedProbes = 0;
+    auto t3 = high_resolution_clock::now();
+
+    for(int i=0;i<1000;i++)
+    {
+        for (const string& word : mixedSearchSet)
+            totalMixedProbes += table.search(word);
+
+    }
+
+
+    auto t4 = high_resolution_clock::now();
+    double avgMixedTime = duration_cast<duration<double, micro>>(t4 - t3).count() / mixedSearchSet.size();
+
+    cout << "Search Before Deletion: Avg Time (us): " << avgSearchTime
+         << ", Avg Probes: " << totalSearchProbes / ( (double)searchSet.size()*1000)<< endl;
+
+    cout << "Search After Deletion: Avg Time (us): " << avgMixedTime
+         << ", Avg Probes: " << totalMixedProbes / ( (double)mixedSearchSet.size() * 1000 ) << endl;
 }
+
+
 
 
 int main()
@@ -605,24 +738,24 @@ int main()
                 return polyHash(s, tableSize);
             });
 
-        // DOUBLE HASHING with modHash + secondHash
-        cout << "\n--- DOUBLE with modHash + secondHash ---";
+        // DOUBLE HASHING with modHash + polyHash
+        cout << "\n--- DOUBLE with modHash + polyHash ---";
         benchmark(tableSize, alpha, DOUBLE_HASHING,words,
             [&](const string& s) {
                 return modHash(s, tableSize);
             },
             [&](const string& s) {
-                return secondHash(s, tableSize);
+                return polyHash(s, tableSize);
             });
 
-        // DOUBLE HASHING with polyHash + secondHash
-        cout << "\n--- DOUBLE with polyHash + secondHash ---";
+        // DOUBLE HASHING with polyHash + modHash
+        cout << "\n--- DOUBLE with polyHash + modHash ---";
         benchmark(tableSize, alpha, DOUBLE_HASHING,words,
             [&](const string& s) {
                 return polyHash(s, tableSize);
             },
             [&](const string& s) {
-                return secondHash(s, tableSize);
+                return modHash(s, tableSize);
             });
 
         // CHAINING with modHash
@@ -638,6 +771,8 @@ int main()
             [&](const string& s) {
                 return polyHash(s, tableSize);
             });
+
+
     }
 
     return 0;

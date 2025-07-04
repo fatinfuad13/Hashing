@@ -290,4 +290,12 @@ public:
     int getNodeCount() const {
         return nodeCount;
     }
+
+    bool isEmpty()
+    {
+        if(getNodeCount() == 0)
+            return true;
+        else
+            return false;
+    }
 };
